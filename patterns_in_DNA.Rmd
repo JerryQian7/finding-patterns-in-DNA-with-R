@@ -1,0 +1,167 @@
+---
+title: "Math 189/289 Lab 4"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+# Sampling and Bootstrap
+### Sampling
+Sampling (with or without replacement) can be done in R using the function `sample()`.
+```{r}
+sample(1:10, size = 10, replace = F)
+sample(1:10, size = 10, replace = T)
+```
+
+### Bootstrap
+Suppose we want to find the point estimate of the proportion of male in the population and its confidence interval. Note that the *sex* variable is 1 if the student is male and 0 if female. Then the point estimation of the proportion of male is:
+```{r}
+data <- read.table("videodata.txt", header=TRUE)
+head(data)
+male.percentage <- mean(data$sex)
+male.percentage
+```
+
+Now we also want to have a confidence interval of this estimator. However, clearly the distribution of *sex* variable is not Normal, it is a Bernoulli random variable. We know our data were drawn from a population with size $N = 314$. Hence, we first create a bootstrap population of this size by repeating every sample for $\frac{314}{91} = 3.45$ times. Here, we'll just specify the parameter *length.out* to be 314.
+```{r}
+set.seed(189289)
+shuffle.ind=sample(1:nrow(data))
+boot.population <- rep(data$sex[shuffle.ind], length.out = 314)
+length(boot.population)
+```
+
+Then we will choose $n = 91$ samples from the Bootstrap population and call this a Bootstrap sample.
+
+```{r}
+sample1 <- sample(boot.population, size = 91, replace = FALSE)
+```
+
+Continue this procedure until we have 400 Bootstrap samples.
+```{r}
+B = 400 # the number of bootstrap samples we want
+boot.sample <- array(dim = c(B, 91))
+for (i in 1:B) {
+  boot.sample[i, ] <- sample(boot.population, size = 91, replace = FALSE)
+}
+```
+
+Then we can calculate the sample mean for each Bootstrap sample (i.e. each row of the Bootstrap sample matrix).
+```{r}
+boot.mean <- apply(X = boot.sample, MARGIN = 1, FUN = mean)
+head(boot.mean)
+```
+
+Let's see the histogram of these Bootstrap sample means.
+```{r}
+hist(boot.mean, breaks = 20, probability = TRUE, density = 20, col = 3, border = 3)
+lines(density(boot.mean, adjust = 2), col = 2)
+```
+
+Check Normality by Q-Q plot and Kolmogorov-Smirnov test.
+```{r}
+par(pty = 's')
+qqnorm(boot.mean)
+qqline(boot.mean)
+ks.test((boot.mean - mean(boot.mean))/sd(boot.mean), pnorm)
+```
+
+So we can accept that the sample mean follows a Normal distribution. Then we can construct $95\%$ confidence intervals.
+```{r}
+boot.sd <- sd(boot.mean)
+male.percentage + c(-1, 1)*1.96*boot.sd
+```
+
+
+# Create Data
+Now we are going to work with some simulated data. We generate $N$ numbers from bernoulli distribution with success rate 0.3, and take them as our population.
+```{r}
+N <- 1000
+data.population <- rbinom(n=N, size=1, prob=0.3)
+```
+
+One can give a story line to this data. If put in the same context as the video games dataset that we have for homework, for example, this could be the response of the students in the whole school whether they played games in the past week or not. Thus, the school has 1000 students in total. 1 indicates the student played, and 0 indicates did not play.
+
+Then in that sense, we might not have observed every one of these responses as in for the survey data in the video games dataset. Thus, we sample, say $n$, observations from the population, and take them as our sample units.
+```{r}
+n <- 300
+ind.sample <- sample.int(n=N, size=n)
+data.sample <- data.population[ind.sample]
+```
+
+# Sample Statistics
+Now we will stick with the story line. Once we have the sample data, we can compute a point estimate, as well as an interval estimate for the fraction of the students who played games in the past week or not.
+
+A point estimate in this case is just the mean of the sample,
+```{r}
+mean.sample <- mean(data.sample)
+mean.sample
+```
+
+To get an interval estimate for the fraction, we follow the derivation in the lecture slides, the interval estimate is then given by,
+$$ \left(\bar x - 1.96 \sqrt{\frac{\bar x (1 - \bar x)}{n-1} \frac{N - n}{N}}, \bar x + 1.96 \sqrt{\frac{\bar x (1 - \bar x)}{n-1} \frac{N - n}{N}} \right), $$
+where $\bar x$ indicates the sample mean, $N$ indicates the population size, and $n$ indicates the sample size. Thus, an interval estimate is then given as the following.
+```{r}
+width <- 1.96 * sqrt(mean.sample*(1-mean.sample)*(N-n)/((n-1)*N))
+int.sample <- c(mean.sample - width, mean.sample + width)
+int.sample
+```
+
+# Bootstrap Estimate
+Another popular method is using the idea of bootstrap. We need a bootstrap population to start with. With the population size of $N=1000$, and sample size of $n=300$, approximately each sample occurs about 3 times in the bootstrap population. One can simply duplicate each observation in the sample 3 times, and treat the resulting sample as the bootstrap population.
+
+One can also sample from the sample with replacement.
+```{r}
+ind.boot <- sample.int(n, size=N, replace=TRUE)
+data.boot <- data.sample[ind.boot]
+```
+
+With the bootstrap population, we are now ready to generate bootstrap sample means. We will take, say 2000, random samples of size $n$.
+```{r}
+B <- 2000
+boot.sample.mean <- rep(NA, B)
+for(i in 1:B){
+  ind <- sample.int(N, size=n, replace=FALSE)
+  boot <- data.boot[ind]
+  boot.sample.mean[i] <- mean(boot)
+}
+```
+
+Let's take a look at the distribution of bootstrap sample means. 
+```{r}
+hist(boot.sample.mean)
+```
+
+The point estimate is the mean of bootstrap sample means.
+```{r}
+mean.boot <- mean(boot.sample.mean)
+mean.boot
+```
+
+There are two approaches one can take from here. We can derive a confidence interval using the bootstrap sample means, as given by
+$$ \left( \bar x - 1.96 s, \bar x + 1.96s \right) $$
+```{r}
+s <- sd(boot.sample.mean)
+int.boot <- c(mean.boot - 1.96*s, mean.boot + 1.96*s)
+int.boot
+```
+
+Another approach to derive an interval estimate using the bootstrap sample means, one can simply extract the 0.025-quantile and 0.975 quantile of the bootstrap sample means and arrive at an interval estimate.
+```{r}
+int.boot <- c(quantile(boot.sample.mean, 0.025), quantile(boot.sample.mean, 0.975))
+int.boot
+```
+
+# Comparing Two Distributions
+To compare two distributions, the Kolmogorov-Smirnov (KS) statistics is a helpful measure. For example, say if we take another sample from the population data earlier, and compare it with the earlier sample we took.
+```{r}
+ind.sample2 <- sample.int(n=N, size=n)
+data.sample2 <- data.population[ind.sample2]
+ks.test(data.sample, data.sample2)
+```
+
+Now let's take another sample that is completely different.
+```{r}
+data.sample2 <- rbinom(n=n, size=1, prob=0.7)
+ks.test(data.sample, data.sample2)
+```
+
